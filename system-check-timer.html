@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Check Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: rgba(255,255,255,0.07);
+    --text: #e8e8f0;
+    --muted: #6a6a80;
+    --accent: #c8f;
+    --timer-glow: #c8f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background-color 1s ease;
+  }
+  #blackout {
+    display: none;
+    position: fixed; inset: 0;
+    background: #000;
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-size: 1.2rem;
+    letter-spacing: 0.2em;
+  }
+  #blackout.active { display: flex; }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.4;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+  .container {
+    position: relative; z-index: 1;
+    max-width: 680px; margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  header { text-align: center; margin-bottom: 3rem; padding-top: 1rem; }
+  .logo-tag {
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    color: var(--muted); letter-spacing: 0.3em; text-transform: uppercase; margin-bottom: 0.5rem;
+  }
+  h1 {
+    font-size: 2rem; font-weight: 900; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff 0%, #c8f 50%, #8cf 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; letter-spacing: 0.1em; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.5rem; margin-bottom: 1.2rem;
+    position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200,136,255,0.4), transparent);
+  }
+  .card-label {
+    font-family: 'Space Mono', monospace; font-size: 0.6rem;
+    color: var(--muted); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 1rem;
+  }
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+  .mode-btn {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem; cursor: pointer; text-align: left;
+    transition: all 0.2s; color: var(--text);
+  }
+  .mode-btn:hover { border-color: rgba(200,136,255,0.3); background: rgba(200,136,255,0.05); }
+  .mode-btn.active {
+    border-color: var(--accent); background: rgba(200,136,255,0.1);
+    box-shadow: 0 0 20px rgba(200,136,255,0.15);
+  }
+  .mode-btn .mode-icon { font-size: 1.4rem; margin-bottom: 0.4rem; }
+  .mode-btn .mode-name { font-size: 0.85rem; font-weight: 700; }
+  .mode-btn .mode-desc { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+  .mode-btn .mode-cycle { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--accent); margin-top: 0.4rem; }
+  .time-row { display: flex; align-items: center; gap: 1rem; }
+  .time-input-wrap { flex: 1; position: relative; }
+  .time-input-wrap input {
+    width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.8rem 1rem; color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 1.4rem; text-align: center; outline: none; transition: border-color 0.2s;
+  }
+  .time-input-wrap input:focus { border-color: var(--accent); }
+  .time-unit { font-size: 0.75rem; color: var(--muted); text-align: center; margin-top: 0.3rem; letter-spacing: 0.1em; }
+  .calc-result {
+    background: rgba(200,136,255,0.08); border: 1px solid rgba(200,136,255,0.2);
+    border-radius: 8px; padding: 0.8rem 1rem;
+    font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent); line-height: 1.6; min-width: 160px;
+  }
+  .start-btn {
+    width: 100%; background: linear-gradient(135deg, #9f5de2, #5b8def);
+    border: none; border-radius: 12px; padding: 1.2rem; color: #fff;
+    font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 1.1rem; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.05em; transition: all 0.2s;
+    box-shadow: 0 4px 24px rgba(159,93,226,0.35); position: relative; overflow: hidden;
+  }
+  .start-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 30px rgba(159,93,226,0.45); }
+  .start-btn:active { transform: translateY(0); }
+  #timerScreen { display: none; }
+  #timerScreen.active { display: block; }
+  #setupScreen.hidden { display: none; }
+  .timer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .cycle-badge {
+    font-family: 'Space Mono', monospace; font-size: 0.7rem;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    padding: 0.3rem 0.8rem; border-radius: 999px; color: var(--muted);
+  }
+  .stop-btn {
+    background: none; border: 1px solid rgba(255,100,100,0.3); border-radius: 8px;
+    padding: 0.4rem 0.9rem; color: rgba(255,100,100,0.7); cursor: pointer;
+    font-size: 0.75rem; font-family: 'Space Mono', monospace; transition: all 0.2s;
+  }
+  .stop-btn:hover { border-color: rgba(255,100,100,0.7); color: #f66; }
+  .step-progress { display: flex; gap: 0.4rem; margin-bottom: 1.5rem; }
+  .step-pip {
+    flex: 1; height: 3px; background: rgba(255,255,255,0.08);
+    border-radius: 999px; transition: background 0.5s;
+  }
+  .step-pip.done { background: rgba(255,255,255,0.5); }
+  .step-pip.active { background: var(--timer-glow, #c8f); box-shadow: 0 0 8px var(--timer-glow, #c8f); }
+  .timer-stage {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2.5rem 2rem; text-align: center;
+    position: relative; overflow: hidden;
+    transition: background-color 1s ease, border-color 0.5s ease; margin-bottom: 1.2rem;
+  }
+  .timer-stage-glow {
+    position: absolute; inset: 0; border-radius: 20px; opacity: 0;
+    transition: opacity 0.5s; pointer-events: none;
+  }
+  .step-number { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--muted); letter-spacing: 0.3em; margin-bottom: 0.5rem; }
+  .step-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 2rem; line-height: 1.3; }
+  .time-display {
+    font-family: 'Space Mono', monospace; font-size: 5.5rem; font-weight: 700;
+    line-height: 1; letter-spacing: -0.05em; position: relative;
+    text-shadow: 0 0 40px var(--timer-glow, #c8f); transition: text-shadow 0.5s, color 0.5s;
+  }
+  .time-display.urgent {
+    animation: pulse 0.5s ease-in-out infinite;
+    color: #f66 !important; text-shadow: 0 0 40px #f44 !important;
+  }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  .step-total { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: var(--muted); margin-top: 1rem; }
+
+  /* announce bubble with typing effect */
+  .announce-bubble {
+    background: rgba(200,136,255,0.08); border: 1px solid rgba(200,136,255,0.2);
+    border-radius: 12px; padding: 1rem 1.2rem; font-size: 0.9rem; line-height: 1.6;
+    color: rgba(255,255,255,0.85); position: relative; margin-bottom: 1.2rem;
+    min-height: 3.5rem; display: flex; align-items: flex-start; gap: 0.8rem;
+    transition: border-color 0.3s;
+  }
+  .announce-bubble.cheer { border-color: rgba(100,220,100,0.4); background: rgba(100,220,100,0.07); }
+  .announce-bubble.urgent-msg { border-color: rgba(255,100,100,0.4); background: rgba(255,100,100,0.07); }
+  .speaker-icon { font-size: 1.2rem; flex-shrink: 0; opacity: 0.7; margin-top: 0.1rem; }
+  .announce-text { flex: 1; }
+  .announce-text .cursor {
+    display: inline-block; width: 2px; height: 1em;
+    background: rgba(255,255,255,0.6); margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink-cursor 0.7s step-end infinite;
+  }
+  @keyframes blink-cursor { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+  .ctrl-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.9rem; color: var(--text); cursor: pointer;
+    font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 0.85rem; font-weight: 700;
+    transition: all 0.2s; letter-spacing: 0.03em;
+  }
+  .ctrl-btn:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); }
+  .ctrl-btn.primary { background: rgba(200,136,255,0.1); border-color: rgba(200,136,255,0.3); color: var(--accent); }
+  .ctrl-btn.primary:hover { background: rgba(200,136,255,0.18); }
+  .upcoming { margin-bottom: 0; }
+  .upcoming-item {
+    display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border); opacity: 0.5; font-size: 0.82rem; transition: opacity 0.3s;
+  }
+  .upcoming-item:last-child { border-bottom: none; }
+  .upcoming-item .up-num { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--muted); width: 20px; }
+  .upcoming-item .up-color { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .upcoming-item .up-time { font-family: 'Space Mono', monospace; font-size: 0.7rem; color: var(--muted); margin-left: auto; }
+  .voice-status {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.7rem; color: var(--muted); margin-top: 1rem; justify-content: center;
+  }
+  .voice-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .voice-dot.speaking { background: #4f4; box-shadow: 0 0 6px #4f4; animation: blink-v 0.4s ease-in-out infinite; }
+  @keyframes blink-v { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #completeScreen { display: none; text-align: center; padding: 3rem 0; }
+  #completeScreen.active { display: block; }
+  .complete-emoji { font-size: 4rem; margin-bottom: 1rem; }
+  .complete-title { font-size: 1.8rem; font-weight: 900; margin-bottom: 0.5rem; }
+  .complete-sub { color: var(--muted); margin-bottom: 2rem; font-size: 0.9rem; }
+  .restart-btn {
+    background: none; border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.8rem 2rem; color: var(--text); cursor: pointer;
+    font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 0.9rem; transition: all 0.2s;
+  }
+  .restart-btn:hover { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 480px) {
+    .mode-grid { grid-template-columns: 1fr; }
+    .time-display { font-size: 4rem; }
+    .time-row { flex-direction: column; }
+    .calc-result { min-width: auto; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="blackout">
+  <div style="font-size:0.7rem;letter-spacing:0.4em;text-transform:uppercase;margin-bottom:1rem">完全休憩モード</div>
+  <div id="blackoutTimer" style="font-family:'Space Mono',monospace;font-size:3rem;color:#222">10:00</div>
+  <div style="font-size:0.6rem;margin-top:1rem;color:#1a1a1a;letter-spacing:0.2em">— 目を閉じて、脳を休めてください —</div>
+</div>
+
+<div class="container">
+  <header>
+    <div class="logo-tag">// STUDY SYSTEM v2.0</div>
+    <h1>System Check Timer</h1>
+    <div class="subtitle">学習効率極大化・インターバルタイマー</div>
+  </header>
+
+  <div id="setupScreen">
+    <div class="card">
+      <div class="card-label">// 01 — モード選択</div>
+      <div class="mode-grid">
+        <button class="mode-btn active" data-mode="A" onclick="selectMode('A')">
+          <div class="mode-icon">📐</div>
+          <div class="mode-name">数学・理科 基礎</div>
+          <div class="mode-desc">インプット＆システムチェック</div>
+          <div class="mode-cycle">1サイクル：20分</div>
+        </button>
+        <button class="mode-btn" data-mode="B" onclick="selectMode('B')">
+          <div class="mode-icon">🔬</div>
+          <div class="mode-name">数学・理科 応用</div>
+          <div class="mode-desc">重問・過去問・AI深入り</div>
+          <div class="mode-cycle">1サイクル：35分</div>
+        </button>
+        <button class="mode-btn" data-mode="C" onclick="selectMode('C')">
+          <div class="mode-icon">📖</div>
+          <div class="mode-name">英語</div>
+          <div class="mode-desc">解釈・要約 高速周回</div>
+          <div class="mode-cycle">1サイクル：10分</div>
+        </button>
+        <button class="mode-btn" data-mode="D" onclick="selectMode('D')">
+          <div class="mode-icon">🌙</div>
+          <div class="mode-name">完全休憩</div>
+          <div class="mode-desc">ポモドーロ・シャットダウン</div>
+          <div class="mode-cycle">1回：10分</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="card" id="timeCard">
+      <div class="card-label">// 02 — 学習時間を設定</div>
+      <div class="time-row">
+        <div class="time-input-wrap">
+          <input type="number" id="totalMinutes" value="60" min="1" max="780" oninput="calcCycles()">
+          <div class="time-unit">総学習時間（分）</div>
+        </div>
+        <div class="calc-result" id="calcResult">
+          <div>3 サイクル</div>
+          <div style="color:var(--muted);margin-top:0.2rem">+ 残り 0 分</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:1.2rem">
+      <button class="start-btn" onclick="startTimer()">▶ セッションを開始する</button>
+      <div class="voice-status">
+        <div class="voice-dot" id="voiceDot"></div>
+        <span id="voiceStatusText">音声を確認中...</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="timerScreen">
+    <div class="timer-header">
+      <div class="cycle-badge" id="cycleBadge">CYCLE 1 / 3</div>
+      <button class="stop-btn" onclick="stopTimer()">✕ 終了</button>
+    </div>
+    <div class="step-progress" id="stepProgress"></div>
+    <div class="timer-stage" id="timerStage">
+      <div class="timer-stage-glow" id="stageGlow"></div>
+      <div class="step-number" id="stepNumber">STEP 1 / 4</div>
+      <div class="step-name" id="stepName">自力思考・ロードマップ作成</div>
+      <div class="time-display" id="timeDisplay">05:00</div>
+      <div class="step-total" id="stepTotal">このステップ：5分</div>
+    </div>
+    <div class="announce-bubble" id="announceBubble">
+      <span class="speaker-icon" id="speakerIcon">🎙</span>
+      <div class="announce-text" id="announceText">セッションを開始します。</div>
+    </div>
+    <div class="controls">
+      <button class="ctrl-btn primary" onclick="pauseResume()" id="pauseBtn">⏸ 一時停止</button>
+      <button class="ctrl-btn" onclick="skipStep()">⏭ このステップをスキップ</button>
+    </div>
+    <div class="card upcoming" style="margin-top:1.2rem">
+      <div class="card-label">// 次のステップ</div>
+      <div id="upcomingList"></div>
+    </div>
+  </div>
+
+  <div id="completeScreen">
+    <div class="complete-emoji">🎉</div>
+    <div class="complete-title">セッション完了！</div>
+    <div class="complete-sub" id="completeMsg">お疲れ様でした。</div>
+    <button class="restart-btn" onclick="resetAll()">↩ 最初に戻る</button>
+  </div>
+</div>
+
+<script>
+// ===== RANDOM PICK HELPER =====
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// ===== VOICE SCRIPTS — multiple variants per context =====
+const SCRIPTS = {
+  // ---- MODE A (数学・理科 基礎) ----
+  A_step0: [
+    'さあ、まずは5分間、自力でじっくり考えてみよ？ あなたなら絶対に初手が見つかるはず！',
+    'よし、スタート！最初の5分は自分の頭だけで挑んでみて。うまくいかなくていいよ、まず手を動かして！',
+    'はじめよう！自力思考の時間ね。方針だけ立てられたら十分だから、焦らずゆっくり考えてみて。',
+    'スタート！どんな問題でも、まず自分なりのロードマップを作るのが大事。5分、集中していこう！',
+  ],
+  A_step1: [
+    '解説確認の時間だよ。ロジックの行間をしっかり読んで、なぜそうなるかを追いかけてね。',
+    '解説を読む時間！でも、ただ読み流すのはもったいないよ？ 「なぜ？」を問いながら読んでみて。',
+    'さあ解説タイム。自分の思考と照らし合わせながら、どこにズレがあったか確認してね。',
+    '解説精読スタート！分かったつもりじゃなくて、他人に説明できるくらいまで理解してね。',
+  ],
+  A_step2: [
+    'はい、そこまで！今度は本を完全に閉じてね？ 意地悪だけど、ノーヒントで最初から最後まで裏紙に再現スタート！',
+    'よし、本を閉じて！ここが一番大事なとこだよ。何も見ずに、頭の中だけで再現してみて。できるだけ細かく！',
+    'さあ、完全再現の時間！教科書もノートも伏せてね。これが本当の意味で「分かった」の証明だから、全力で！',
+    '本を閉じて裏紙を出して！5分間、自分の記憶だけで解答を再現してみよう。きついけど、これが一番伸びるよ！',
+  ],
+  A_step3: [
+    '再現性の確認の時間。架空の生徒に15秒で授業するつもりで、自分の言葉で説明してみて！',
+    '答え合わせタイム！合ってたとこも間違えたとこも、全部きちんと確認してね。理解の定着が大事！',
+    'セルフレクチャー！今のステップで何が分かって何が分からなかったか、正直に振り返ってみよう。',
+    'ラストステップ、答え合わせ！間違えた部分は特に丁寧に。次のサイクルでまた確認できるから安心して。',
+  ],
+  // ---- MODE B (数学・理科 応用) ----
+  B_step0: [
+    'さあ、自力突破スタート！10分間、諦めずに粘ってね。最初の一手が出れば大丈夫！',
+    '10分間、自分の力だけで挑んでみて！行き詰まっても、うんうん唸ることに意味があるんだよ。',
+    'よし、自力で突破しにいこう！考えるのをやめなければ、どんな問題にも必ず糸口が見えてくるから。',
+    '難問に挑戦スタート！最初の10分は全力で粘ること。ここで諦めたら損だよ、絶対！',
+  ],
+  B_step1: [
+    '解説確認の時間。自分の思考のどこにズレがあったかを、冷静に特定してね。',
+    '解答を見る時間！でも、答えを確認するだけじゃなくて、自分との「差」を分析してね。',
+    '解説タイム。正解してても、解説の方が美しい解法があることも多いから、丁寧に読んでみて！',
+    'さあ解説確認。どこで詰まってたのか、なぜそこで詰まったのか、原因まで突き止めてね。',
+  ],
+  B_step2: [
+    'AIタイムスタート！5分以内に核心だけを吸収してね。タイマー終了で強制遮断だから、要点だけをピックアップして！',
+    'AIに聞く時間！でも依存しすぎないようにね。必要な情報だけを5分でサクッと引き出して。',
+    'AIタイム開始！答えを丸写しするのは禁止だよ。「考え方のヒント」だけを5分で掴んでね。',
+    'Geminiタイムスタート！あなたは答えじゃなくて「視点」を借りに行くんだよ。5分間、賢く活用して！',
+  ],
+  B_step3: [
+    'ヒントを手に入れたね。今度は自分の力で、もう一度最初から解答を組み立ててみよう！',
+    'さあ再構築スタート！さっきのヒントを頭に入れた上で、自分なりの答えを作り上げてね。',
+    'ロジック再構築！AIに頼りきりじゃなくて、自分の言葉で解答を書き直すのが大事だよ。',
+    '10分でもう一度！今度はさっきより絶対に深く解けるはず。信じて取り組んでみて！',
+  ],
+  B_step4: [
+    'お疲れ様！脳を少し休めて、次の問題の準備をしておこうね。深呼吸もいいよ。',
+    'バッファタイム！無理に次に進まなくていいよ。今のサイクルで学んだことをぼんやり振り返ってみて。',
+    'よく頑張った！少しだけ手を止めて、水でも飲みながら頭を切り替えてね。',
+    '切り替えタイム。今のサイクル、どこが一番難しかった？ 次に活かすためにメモしておいてね。',
+  ],
+  // ---- MODE C (英語) ----
+  C_step0: [
+    '脳内構造把握スタート！紙に書かずに、頭の中でスピード勝負ね。全体の流れをつかんで！',
+    '英語スタート！まず全体を読んで、構造を頭の中にマッピングしてね。細かいとこは後でいいよ！',
+    'よし、スピードで文章の骨格をつかんでみて！どこが主語で、どこが主張なのかを意識してね。',
+    '要約骨子スタート！長文は怖くないよ。まず「何を言いたいか」だけを素早く掴む練習をしよう！',
+  ],
+  C_step1: [
+    '解答と照合！構文の取り違えがないかチェックして。ズレた部分を丁寧に修正してね。',
+    '照合タイム。自分の解釈とどこが違ったか、冷静に確認してみよう。間違いは伸びるチャンスだよ！',
+    '答え合わせ！構文ミスがあったところは特に丁寧に。同じミスを繰り返さないのが上達への近道。',
+    '解答照合スタート！数点の差が合否を分けるよ、細かいところまで丁寧に確認してね。',
+  ],
+  C_step2: [
+    '音読・音声流し込みスタート！構造を意識しながら、声に出してね。体で覚えちゃおう！',
+    '音読タイム！黙読より声に出す方が記憶に残るよ。リズムに乗って、気持ちよく読んでみて！',
+    'シャドーイング開始！文構造を頭に置きながら音読してね。口が覚えると試験でも自然に出てくるよ。',
+    '声に出して！英語は音と意味を一緒に覚えるのが最強。恥ずかしがらず大きな声でいこう！',
+  ],
+  // ---- MODE D (完全休憩) ----
+  D_step0: [
+    '本当にお疲れ様！13時間走るんだから、今はスマホも参考書も全部置いて、目をつぶってゆっくり脳を休めてね。10分後にまた声かけるね。',
+    'よく頑張ってるね！ここで一回しっかり休むことで、次のブロックが格段に質良くなるよ。今は何も考えずに、ただ静かにしてて。',
+    '休憩タイム！これは怠けじゃなくて、脳への投資だよ。目を閉じて、深呼吸しながら10分間リセットしてね。',
+    '全部遮断して！勉強の効率は、集中と休憩のメリハリで決まるんだよ。今この10分を大切にしてね。',
+  ],
+  // ---- MID-SESSION CHEERS (random, mid-step) ----
+  cheer: [
+    'ちゃんと集中できてるね！この調子でいこう。',
+    '今日もすごく頑張ってるよ！あなたの努力はちゃんと積み上がってるからね。',
+    'そのペース、完璧だよ！このまま続けて。',
+    '集中力、維持できてる！えらいよ、本当に。',
+    '少し疲れてきたかな？でも大丈夫、もう少しで切り替えタイムが来るよ。',
+    'そのまま諦めないで。迷ったときはとにかく手を動かすのが正解だよ！',
+    '黙々とやれてるじゃない！その粘りが一番大事なんだよ。',
+    'うまくいかなくても、考え続けてることに意味があるからね。',
+    'いい感じだよ！自分を信じてそのまま続けて。',
+    'ここが踏ん張りどころだよ！一緒に乗り越えよう。',
+  ],
+  // ---- URGENCY (last 10s) ----
+  urgency_ai: [
+    'あと10秒でAIタイム強制終了だよ！寂しいけど画面を閉じる準備してね、3、2、1…',
+    '残り10秒！必要な情報は手に入れた？ 画面閉じる準備して。3、2、1…',
+    'AIタイム終了まであと10秒！核心だけ掴めた？ はい、閉じるよ〜。3、2、1…',
+  ],
+  urgency_normal: [
+    'あと10秒！まとめに入って。',
+    '残り10秒だよ！次のステップに備えてね。',
+    'もうすぐ切り替えだよ！最後まで集中！',
+  ],
+  // ---- FINISH ----
+  finish: [
+    'セッション完了！全サイクル走りきったね。本当にお疲れ様、すごいよ！',
+    'お疲れ様でした！今日のセッション、全部やり遂げたね。自分を褒めてあげてね。',
+    '完走！全部のサイクルをこなしたね。この積み重ねが確実に実力になってるよ。',
+    'セッション終わったよ！頑張ったね。今日勉強したことは、ちゃんと脳に刻まれてるから安心して。',
+  ],
+};
+
+function getScript(key) {
+  return pick(SCRIPTS[key] || ['よし、スタート！']);
+}
+
+// ===== MODES DATA =====
+const MODES = {
+  A: {
+    name: '数学・理科 基礎', cycleMin: 20,
+    steps: [
+      { name: '自力思考・ロードマップ作成', min: 5, glow: '#4af', bgColor: '#0d1a2e', scriptKey: 'A_step0', icon: '🧠' },
+      { name: '解説精読・AI翻訳',           min: 5, glow: '#4fa', bgColor: '#0d2218', scriptKey: 'A_step1', icon: '📗' },
+      { name: '本を閉じて「完全再現」',     min: 5, glow: '#f44', bgColor: '#2a0d0d', scriptKey: 'A_step2', icon: '📝' },
+      { name: '答え合わせ＆セルフレクチャー', min: 5, glow: '#fa4', bgColor: '#1e1e0d', scriptKey: 'A_step3', icon: '✅' },
+    ]
+  },
+  B: {
+    name: '数学・理科 応用', cycleMin: 35,
+    steps: [
+      { name: '自力突破に挑戦',         min: 10, glow: '#4af', bgColor: '#0d1a2e', scriptKey: 'B_step0', icon: '⚔️' },
+      { name: '解答・解説の確認',       min: 5,  glow: '#4fa', bgColor: '#0d2218', scriptKey: 'B_step1', icon: '🔍' },
+      { name: 'AIタイム【強制遮断】',   min: 5,  glow: '#f88', bgColor: '#2a1a0d', scriptKey: 'B_step2', icon: '🤖', isAI: true },
+      { name: 'ロジック再構築・再現',   min: 10, glow: '#88f', bgColor: '#150d2a', scriptKey: 'B_step3', icon: '🏗️' },
+      { name: 'バッファ・切り替え',     min: 5,  glow: '#fa4', bgColor: '#1e1e0d', scriptKey: 'B_step4', icon: '☕' },
+    ]
+  },
+  C: {
+    name: '英語', cycleMin: 10,
+    steps: [
+      { name: '脳内構造把握・要約骨子', min: 4, glow: '#4af', bgColor: '#0d1a2e', scriptKey: 'C_step0', icon: '⚡' },
+      { name: '解答照合・ズレ修正',     min: 3, glow: '#4fa', bgColor: '#0d2218', scriptKey: 'C_step1', icon: '🎯' },
+      { name: '音読・シャドーイング',   min: 3, glow: '#fa4', bgColor: '#1e1e0d', scriptKey: 'C_step2', icon: '🗣️' },
+    ]
+  },
+  D: {
+    name: '完全休憩', cycleMin: 10, isRest: true,
+    steps: [
+      { name: '脳の冷却・完全シャットダウン', min: 10, glow: '#333', bgColor: '#050505', scriptKey: 'D_step0', icon: '🌙' },
+    ]
+  },
+};
+
+// ===== STATE =====
+let state = {
+  mode: 'A', totalMinutes: 60, cycles: 3, remainder: 0,
+  currentStep: 0, secondsLeft: 0, totalStepSeconds: 0,
+  isPaused: false, timer: null, cheerTimer: null, steps: [],
+  voiceReady: false, speaking: false,
+  announcedUrgency: false, stepCount: 0,
+};
+
+// ===== VOICE =====
+let selectedVoice = null;
+let typewriterTimer = null;
+
+function initVoice() {
+  if (!window.speechSynthesis) {
+    document.getElementById('voiceStatusText').textContent = '音声非対応ブラウザです'; return;
+  }
+  function loadVoices() {
+    const voices = speechSynthesis.getVoices();
+    selectedVoice =
+      voices.find(v => v.lang === 'ja-JP' && v.name.includes('Google')) ||
+      voices.find(v => v.name === 'Kyoko') ||
+      voices.find(v => v.lang === 'ja-JP' && v.name.toLowerCase().includes('female')) ||
+      voices.find(v => v.lang === 'ja-JP') ||
+      voices.find(v => v.lang.startsWith('ja'));
+    if (selectedVoice) {
+      state.voiceReady = true;
+      document.getElementById('voiceStatusText').textContent = `音声: ${selectedVoice.name.substring(0,22)}`;
+      document.getElementById('voiceDot').style.background = '#4f4';
+    } else {
+      document.getElementById('voiceStatusText').textContent = '日本語音声が見つかりません';
+    }
+  }
+  if (speechSynthesis.getVoices().length > 0) loadVoices();
+  speechSynthesis.addEventListener('voiceschanged', loadVoices);
+}
+
+function speak(text, onEnd) {
+  if (!window.speechSynthesis) { if (onEnd) onEnd(); return; }
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  if (selectedVoice) utter.voice = selectedVoice;
+  utter.lang = 'ja-JP';
+  utter.rate = 0.93;
+  utter.pitch = 1.18;
+  utter.volume = 1.0;
+  state.speaking = true;
+  document.getElementById('voiceDot').classList.add('speaking');
+  utter.onend = () => {
+    state.speaking = false;
+    document.getElementById('voiceDot').classList.remove('speaking');
+    if (onEnd) onEnd();
+  };
+  utter.onerror = () => {
+    state.speaking = false;
+    document.getElementById('voiceDot').classList.remove('speaking');
+    if (onEnd) onEnd();
+  };
+  speechSynthesis.speak(utter);
+}
+
+// Typewriter effect for announce bubble
+function typewrite(text, bubble, icon, style) {
+  clearInterval(typewriterTimer);
+  const el = document.getElementById('announceText');
+  const bub = document.getElementById('announceBubble');
+  const sp = document.getElementById('speakerIcon');
+
+  bub.className = 'announce-bubble' + (style ? ' ' + style : '');
+  sp.textContent = icon || '🎙';
+  el.innerHTML = '';
+  let i = 0;
+  typewriterTimer = setInterval(() => {
+    if (i < text.length) {
+      el.innerHTML = text.substring(0, i + 1) + '<span class="cursor"></span>';
+      i++;
+    } else {
+      el.innerHTML = text;
+      clearInterval(typewriterTimer);
+    }
+  }, 28);
+}
+
+function announceStep(step) {
+  const text = getScript(step.scriptKey);
+  typewrite(text, 'announceBubble', step.icon || '🎙', '');
+  speak(text);
+}
+
+function announceCheer() {
+  const text = pick(SCRIPTS.cheer);
+  typewrite(text, 'announceBubble', '💬', 'cheer');
+  speak(text);
+}
+
+function announceUrgency(isAI) {
+  const text = isAI ? pick(SCRIPTS.urgency_ai) : pick(SCRIPTS.urgency_normal);
+  typewrite(text, 'announceBubble', '⚠️', 'urgent-msg');
+  speak(text);
+}
+
+// Schedule random cheer mid-step
+function scheduleCheer(totalSec) {
+  clearTimeout(state.cheerTimer);
+  if (totalSec < 90) return; // don't cheer for very short steps
+  // Fire cheer at 40-70% through the step
+  const delay = Math.floor(totalSec * (0.40 + Math.random() * 0.30)) * 1000;
+  state.cheerTimer = setTimeout(() => {
+    if (!state.isPaused) announceCheer();
+  }, delay);
+}
+
+// ===== SETUP =====
+function selectMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+  document.getElementById('timeCard').style.display = mode === 'D' ? 'none' : 'block';
+  calcCycles();
+}
+
+function calcCycles() {
+  const totalMin = parseInt(document.getElementById('totalMinutes').value) || 60;
+  state.totalMinutes = totalMin;
+  if (state.mode === 'D') {
+    state.cycles = 1; state.remainder = 0;
+    document.getElementById('calcResult').innerHTML = `<div>1 回</div><div style="color:var(--muted);margin-top:0.2rem">10分の休憩</div>`;
+    return;
+  }
+  const cycleMin = MODES[state.mode].cycleMin;
+  state.cycles = Math.max(1, Math.floor(totalMin / cycleMin));
+  state.remainder = totalMin % cycleMin;
+  document.getElementById('calcResult').innerHTML =
+    `<div>${state.cycles} サイクル</div><div style="color:var(--muted);margin-top:0.2rem">+ 残り ${state.remainder} 分</div>`;
+}
+
+// ===== TIMER =====
+function startTimer() {
+  calcCycles();
+  const modeData = MODES[state.mode];
+  state.steps = [];
+  for (let c = 0; c < state.cycles; c++) {
+    modeData.steps.forEach(s => state.steps.push({ ...s, cycleNum: c + 1 }));
+  }
+  if (state.remainder > 0 && state.mode !== 'D') {
+    state.steps.push({
+      name: `残り時間 (${state.remainder}分)`,
+      min: state.remainder, glow: '#fa4', bgColor: '#1e1e0d',
+      scriptKey: '_remainder', icon: '⏳', cycleNum: state.cycles + 1,
+    });
+    SCRIPTS._remainder = [`残り${state.remainder}分、最後まで全力でいこう！`, `あと${state.remainder}分！ここが踏ん張りどころだよ。`, `残り${state.remainder}分！今日の締めくくり、最高の集中で終わろう！`];
+  }
+  state.currentStep = 0; state.isPaused = false; state.stepCount = 0;
+  document.getElementById('setupScreen').classList.add('hidden');
+  document.getElementById('timerScreen').classList.add('active');
+  loadStep(0);
+}
+
+function loadStep(idx) {
+  if (idx >= state.steps.length) { finishSession(); return; }
+  state.currentStep = idx;
+  state.announcedUrgency = false;
+  state.stepCount++;
+  const step = state.steps[idx];
+  const modeData = MODES[state.mode];
+
+  state.secondsLeft = step.min * 60;
+  state.totalStepSeconds = step.min * 60;
+
+  // Progress pips
+  const pips = document.getElementById('stepProgress');
+  pips.innerHTML = state.steps.map((s, i) => {
+    let cls = 'step-pip';
+    if (i < idx) cls += ' done';
+    else if (i === idx) cls += ' active';
+    return `<div class="${cls}" style="--timer-glow:${s.glow}"></div>`;
+  }).join('');
+
+  const cycleTotal = state.mode === 'D' ? 1 : state.cycles;
+  document.getElementById('cycleBadge').textContent = `CYCLE ${step.cycleNum} / ${cycleTotal}`;
+
+  const stepInCycle = (idx % modeData.steps.length) + 1;
+  document.getElementById('stepNumber').textContent = `STEP ${stepInCycle} / ${modeData.steps.length}`;
+  document.getElementById('stepName').textContent = `${step.icon || ''} ${step.name}`;
+  document.getElementById('stepTotal').textContent = `このステップ：${step.min}分`;
+
+  // Colors
+  const stage = document.getElementById('timerStage');
+  stage.style.backgroundColor = step.bgColor || 'var(--surface)';
+  stage.style.borderColor = `${step.glow}33`;
+  document.getElementById('stageGlow').style.boxShadow = `inset 0 0 80px ${step.glow}18`;
+  document.getElementById('stageGlow').style.opacity = '1';
+  document.getElementById('timeDisplay').style.color = step.glow;
+  document.documentElement.style.setProperty('--timer-glow', step.glow);
+
+  renderUpcoming(idx);
+  announceStep(step);
+
+  if (state.mode === 'D') {
+    setTimeout(() => document.getElementById('blackout').classList.add('active'), 1500);
+  }
+
+  scheduleCheer(state.totalStepSeconds);
+
+  clearInterval(state.timer);
+  updateDisplay();
+  state.timer = setInterval(tick, 1000);
+  document.getElementById('pauseBtn').textContent = '⏸ 一時停止';
+}
+
+function tick() {
+  if (state.isPaused) return;
+  state.secondsLeft--;
+
+  if (state.mode === 'D') {
+    document.getElementById('blackoutTimer').textContent = formatTime(state.secondsLeft);
+  }
+
+  if (state.secondsLeft <= 10 && state.secondsLeft > 0 && !state.announcedUrgency) {
+    state.announcedUrgency = true;
+    const step = state.steps[state.currentStep];
+    announceUrgency(step && step.isAI);
+    document.getElementById('timeDisplay').classList.add('urgent');
+  }
+
+  if (state.secondsLeft <= 0) {
+    clearInterval(state.timer);
+    clearTimeout(state.cheerTimer);
+    document.getElementById('timeDisplay').classList.remove('urgent');
+    document.getElementById('blackout').classList.remove('active');
+    loadStep(state.currentStep + 1);
+    return;
+  }
+  updateDisplay();
+}
+
+function updateDisplay() {
+  document.getElementById('timeDisplay').textContent = formatTime(state.secondsLeft);
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function pauseResume() {
+  state.isPaused = !state.isPaused;
+  document.getElementById('pauseBtn').textContent = state.isPaused ? '▶ 再開' : '⏸ 一時停止';
+  if (state.isPaused) { speechSynthesis.cancel(); clearTimeout(state.cheerTimer); }
+  else scheduleCheer(state.secondsLeft); // reschedule cheer from remaining time
+}
+
+function skipStep() {
+  clearInterval(state.timer);
+  clearTimeout(state.cheerTimer);
+  document.getElementById('timeDisplay').classList.remove('urgent');
+  document.getElementById('blackout').classList.remove('active');
+  loadStep(state.currentStep + 1);
+}
+
+function stopTimer() {
+  clearInterval(state.timer);
+  clearTimeout(state.cheerTimer);
+  speechSynthesis.cancel();
+  document.getElementById('blackout').classList.remove('active');
+  document.getElementById('timeDisplay').classList.remove('urgent');
+  document.getElementById('timerScreen').classList.remove('active');
+  document.getElementById('setupScreen').classList.remove('hidden');
+  document.documentElement.style.setProperty('--timer-glow', '#c8f');
+  document.getElementById('timerStage').style.backgroundColor = '';
+  document.getElementById('timerStage').style.borderColor = '';
+}
+
+function finishSession() {
+  clearInterval(state.timer);
+  clearTimeout(state.cheerTimer);
+  document.getElementById('blackout').classList.remove('active');
+  document.getElementById('timerScreen').classList.remove('active');
+  document.getElementById('completeScreen').classList.add('active');
+  const msg = `${MODES[state.mode].name}モード・${state.cycles}サイクル完走！`;
+  document.getElementById('completeMsg').textContent = msg;
+  const finishText = pick(SCRIPTS.finish);
+  speak(finishText);
+  typewrite(finishText, '', '🎊', '');
+}
+
+function resetAll() {
+  speechSynthesis.cancel();
+  document.getElementById('completeScreen').classList.remove('active');
+  document.getElementById('setupScreen').classList.remove('hidden');
+  document.documentElement.style.setProperty('--timer-glow', '#c8f');
+}
+
+function renderUpcoming(currentIdx) {
+  const list = document.getElementById('upcomingList');
+  const upcoming = state.steps.slice(currentIdx + 1, currentIdx + 4);
+  if (!upcoming.length) {
+    list.innerHTML = '<div class="upcoming-item" style="justify-content:center;opacity:0.3;font-size:0.8rem">最後のステップです</div>';
+    return;
+  }
+  list.innerHTML = upcoming.map((s, i) => `
+    <div class="upcoming-item">
+      <span class="up-num">${i+1}</span>
+      <div class="up-color" style="background:${s.glow}"></div>
+      <span>${s.icon||''} ${s.name}</span>
+      <span class="up-time">${s.min}分</span>
+    </div>`).join('');
+}
+
+// ===== INIT =====
+initVoice();
+calcCycles();
+</script>
+</body>
+</html>
